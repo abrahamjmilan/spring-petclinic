@@ -1,0 +1,46 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Compile') {
+            steps {
+                git 'https://github.com/abrahamjmilan/spring-petclinic.git'
+                sh 'mvn compile'
+            }
+        }
+        stage('Run Tests') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+        stage('Package as Docker Image') {
+            steps {
+                sh 'mvn package'
+                sh 'docker build -t spring-petclinic .'
+            }
+        }
+        stage('Publish to Artifactory') {
+            steps {
+                script {
+                    def server = Artifactory.server 'Artifactory_Server_ID'
+                    def buildInfo = Artifactory.newBuildInfo()
+                    
+                    def dockerImage = docker.image('spring-petclinic')
+                    
+                    docker.withRegistry('https://your-artifactory-url/artifactory', 'Artifactory_Credentials_ID') {
+                        def dockerImageTag = "${env.BUILD_NUMBER}"
+                        dockerImage.push("${dockerImageTag}")
+                        buildInfo.env.captureEnv()
+                        buildInfo.env.captureSystem()
+                        buildInfo.env.captureBuildVariables()
+                        buildInfo.env.captureArguments()
+                        
+                        buildInfo.appendDockerTag(dockerImageTag, "docker-local")
+                    }
+                    
+                    server.publishBuildInfo(buildInfo)
+                }
+            }
+        }
+    }
+}
